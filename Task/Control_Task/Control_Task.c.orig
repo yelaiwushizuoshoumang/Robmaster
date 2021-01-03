@@ -1,0 +1,254 @@
+/**
+  ************************************* Copyright ******************************
+  *
+  *
+  * FileName   : Control_Task.c
+  * Version    : v1.0
+  * Author     : Ars Nova
+  * Date       : 2020-12-24
+  * Description:
+  * Function List:
+  	1. ....
+  	   <version>:
+  <modify staff>:
+  		  <data>:
+   <description>:
+  	2. ...
+  ******************************************************************************
+ */
+/**
+  ************************************* Copyright ******************************
+  *
+  *
+  * FileName   : Control_Task.c
+  * Version    : v1.0
+  * Author     : Ars Nova
+  * Date       : 2020-12-22
+  * Description:
+  * Function List:
+  	1. ....
+  	   <version>:
+  <modify staff>:
+  		  <data>:
+   <description>: 夹取任务块
+  	2. ...
+  ******************************************************************************
+ */
+
+#include "Control_Task.h"
+#include "BSP_GPIO_Init.h"
+#include "data_process_task.h"
+#include "CAN_Receive.h"
+#include "stm32f4xx_can.h"
+#include "start_task.h"
+#include "stm32f4xx.h"                  // Device header
+#include "pid.h"
+#define uchar unsigned char
+
+Top_MotorState  Top_Motor_State = Middle_STATE;//电机转态
+Top_WorkState   Top_Work_State = ResetInit_State;//工作转态
+
+PidTypeDef PID_IR;//内环PID
+PidTypeDef PID_OR;//外环PID
+
+extern  motor_measure_t motor_top;
+extern volatile  Encoder_process_t Encoder_top;
+extern  CanRxMsg rx2_message;
+
+float  Need_IR=0,Need_OR=0;
+
+int LEFT_DISTANCE = 0;
+int MIDDLE_DISTANCE = 0;
+int RIGHT_DISTANCE = 0;
+
+static void Reset_State(void);
+static void Move_Choose_State(void);
+static void Move_Left(void);
+static void Move_Middle(void);//移动到左边
+static void Move_Right(void);
+static void Move_Stop(void);
+
+//static void Capture_Task_first(void);//夹取左边
+//static void Capture_Task_second(void);//夹取中间
+//static void Capture_Task_third(void);//夹取第三个
+
+static void Capture_Task_Pro(void);//一级夹取
+static void Capture_Task_PLUS(void);//二级夹取
+
+
+const static fp32 PID_IR_SET[3]= {PID_IR_KP,PID_IR_KI,PID_IR_KD};
+const static fp32 PID_OR_SET[3]= {PID_OR_KP,PID_OR_KI,PID_OR_KD};
+
+extern void Control_Task(void *pvParameters)
+{
+
+    vTaskDelay(10);
+    Reset_State();
+    while(1)
+    {
+        Move_Choose_State();
+	switch(Top_Work_State)
+	{
+	
+		case ResetInit_State :
+			 Reset_State();
+		break;
+		case Once_Capture :
+			Capture_Task_Pro();
+		break;
+		
+		case Once_Capture_Pro :
+		
+		break;
+		
+		case Triple_Capture :
+		
+		break;
+		
+		case Triple_Capture_Pro :
+	
+		break;
+		
+		default :
+			 Reset_State();
+		break;
+		
+	
+	}
+    }
+
+}
+/*
+=========================整体复位==============================
+*/
+static void Reset_State(void)
+{
+    AC_TF_Channel_3_OFF; //旋转夹手..
+    AC_TF_Channel_4_OFF;//夹手开关..
+    AC_TF_Channel_5_OFF;//弹药箱复位
+    AC_TF_Channel_2_OFF;//夹手缩回..
+    vTaskDelay(10);
+    AC_TF_Channel_6_OFF; //整体下降
+}
+/*
+=================================================================
+*/
+/*
+=========================夹取任务================================
+*/
+/*===============一级夹取===============*/
+static void Capture_Task_Pro(void)
+{
+    AC_TF_Channel_6_ON;
+    vTaskDelay(1);
+
+    AC_TF_Channel_2_ON;
+    vTaskDelay(10);
+    AC_TF_Channel_3_ON;
+    AC_TF_Channel_4_ON;
+    AC_TF_Channel_3_OFF;
+    AC_TF_Channel_5_ON;
+    vTaskDelay(1);
+}
+/*======================================*/
+/*==============二级夹取================*/
+static void Capture_Task_PLUS(void)
+{
+		 AC_TF_Channel_6_ON;
+    vTaskDelay(1);
+
+    AC_TF_Channel_2_ON;
+    vTaskDelay(10);
+    AC_TF_Channel_3_ON;
+    AC_TF_Channel_4_ON;
+    AC_TF_Channel_3_OFF;
+    AC_TF_Channel_5_ON;
+    vTaskDelay(1);
+
+
+}
+/*======================================*/
+/*
+=================================================================
+*/
+/*
+=========================电机的移动==============================
+*/
+
+static void Move_Left(void)
+{
+    PID_Init(&PID_IR,PID_POSITION,PID_IR_SET,PID_IR_MAX_OUT,PID_IR_MAX_IOUT);
+    PID_Init(&PID_OR,PID_POSITION,PID_OR_SET,PID_OR_MAX_OUT,PID_OR_MAX_IOUT);
+//    while(1)
+//    {
+    Need_IR=Encoder_top.ecd_angle;
+    PID_Calc(&PID_IR,Need_IR,LEFT_DISTANCE);
+    Need_OR=(float)((rx2_message.Data[2]<<8)|rx2_message.Data[3])/8191;
+    PID_Calc(&PID_OR,Need_OR,PID_IR.out);
+    CAN_TOP_OUT(PID_OR.out);
+    vTaskDelay(1);
+
+//    }
+
+}
+static  void Move_Middle(void)
+{
+    PID_Init(&PID_IR,PID_POSITION,PID_IR_SET,PID_IR_MAX_OUT,PID_IR_MAX_IOUT);
+    PID_Init(&PID_OR,PID_POSITION,PID_OR_SET,PID_OR_MAX_OUT,PID_OR_MAX_IOUT);
+//    while(1)
+//    {
+    Need_IR=Encoder_top.ecd_angle;
+    PID_Calc(&PID_IR,Need_IR,MIDDLE_DISTANCE);
+    Need_OR=(float)((rx2_message.Data[2]<<8)|rx2_message.Data[3])/8191;
+    PID_Calc(&PID_OR,Need_OR,PID_IR.out);
+    CAN_TOP_OUT(PID_OR.out);
+    vTaskDelay(1);
+
+//    }
+
+}
+static  void Move_Right(void)
+{
+    PID_Init(&PID_IR,PID_POSITION,PID_IR_SET,PID_IR_MAX_OUT,PID_IR_MAX_IOUT);
+    PID_Init(&PID_OR,PID_POSITION,PID_OR_SET,PID_OR_MAX_OUT,PID_OR_MAX_IOUT);
+//    while(1)
+//    {
+    Need_IR=Encoder_top.ecd_angle;
+    PID_Calc(&PID_IR,Need_IR,RIGHT_DISTANCE);
+    Need_OR=(float)((rx2_message.Data[2]<<8)|rx2_message.Data[3])/8191;
+    PID_Calc(&PID_OR,Need_OR,PID_IR.out);
+    CAN_TOP_OUT(PID_OR.out);
+    vTaskDelay(1);
+
+//    }
+
+}
+static void Move_Stop(void)
+{
+    CAN_TOP_OUT(PID_OR.out);
+    vTaskDelay(10);
+
+}
+static void Move_Choose_State(void)
+{
+    switch(Top_Motor_State)
+    {
+    case  Left_STATE :
+        Move_Left();
+        break;
+    case Middle_STATE :
+        Move_Middle();
+        break;
+    case Right_STATE :
+        Move_Right();
+        break;
+    default :
+        Move_Stop();
+        break;
+    }
+    vTaskDelay(10);
+
+}
+/*
+============================================================
+*/

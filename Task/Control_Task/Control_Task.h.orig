@@ -1,0 +1,51 @@
+#ifndef _CONTROL_TASK_H
+#define _CONTROL_TASK_H
+#include "stm32f4xx.h"                  // Device header
+#define PID_IR_KP 0.00600000f
+#define PID_IR_KI 0.020000f
+#define PID_IR_KD 0.00000000f
+#define PID_IR_MAX_OUT  16000.0f
+#define PID_IR_MAX_IOUT 500.0f
+
+#define PID_OR_KP 10.0000000f
+#define PID_OR_KI 0.20000000f
+#define PID_OR_KD 0.00000000f
+#define PID_OR_MAX_OUT  16000.0f
+#define PID_OR_MAX_IOUT 500.0f
+
+typedef enum
+{
+    Stop_STATE=0,
+    Left_STATE,
+    Middle_STATE,
+    Right_STATE,
+} Top_MotorState;
+
+typedef  enum
+{
+	ResetInit_State = 0,
+	Once_Capture  ,
+	Once_Capture_Pro ,
+	Triple_Capture  ,
+	Triple_Capture_Pro  ,
+}Top_WorkState;
+
+
+#define VAL_LIMIT(val, min, max) \
+  do                             \
+  {                              \
+    if ((val) <= (min))          \
+    {                            \
+      (val) = (min);             \
+    }                            \
+    else if ((val) >= (max))     \
+    {                            \
+      (val) = (max);             \
+    }                            \
+  } while (0)
+
+
+
+extern void Control_Task(void *pvParameters);
+
+#endif
